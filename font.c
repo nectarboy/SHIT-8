@@ -1,4 +1,4 @@
-const unsigned char fontData[] = {
+const unsigned char FONT_DATA[] = {
     0xF0,
     0x90,
     0x90,

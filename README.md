@@ -6,7 +6,7 @@ a horrible horrible CHIP-8 made in C with SDL<br>
 it's still a WIP, and doesn't have sound, input, etc<br>
 and (so far) it only implements the original CHIP-8
 
-![beebeebooboo](https://github.com/nectarboy/SHIT-8/main/pics/ibm.png?raw=true)
+![beebeebooboo](https://github.com/nectarboy/SHIT-8/blob/main/pics/ibm.png?raw=true)
 
 ### u god games on ur fone
 SHIT-8 has been made and tested for macOS, and idk if it'll compile for other systems !<br>

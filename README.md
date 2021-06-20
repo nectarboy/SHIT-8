@@ -14,8 +14,8 @@ if u wanna try it nonetheless, ull need makefile and SDL to compile !<br>
 or u can download the binary file in the <kbd>releases<kbd> tab !
 
 ### poop lol
-building ! `make` (builds the shit8 executable in the root !)<br>
-running ! `./shit8 folder/to/rom.file`
+building: `make` (builds the shit8 executable in the root !)<br>
+running: `./shit8 folder/to/rom.file`
 
 ---
 

@@ -1,5 +1,8 @@
-#include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <assert.h>
+
 #include <SDL2/SDL.h>
 
 #include "main.h"
@@ -76,6 +79,15 @@ int chipPlotPx(int x, int y, int bit)
     return (bitBefore && !vram[index]) ? 1 : 0;
 }
 
+void chipPanic(char* msg[], int opcode)
+{   
+    printf("\n-- P A N I C ! ! -- %s\n", msg);
+    if (opcode != NULL) printf("OPCODE %X\n", opcode);
+    printf("PC: %X\n\n", pc);
+
+    assert(0); // Crash
+}
+
 // -------------------- // INSTRUCTIONS
 // 0
 static inline void CLS()
@@ -90,16 +102,16 @@ static inline void CLS()
 
 static inline void RET()
 {
-    assert(sp != 0); // Will stack underflow occur ??
+    if (sp == 0) chipPanic("stack underflow !!", NULL); // Handle stack underflow
 
     sp--;
-    pc = stack[sp];
+    pc = stack[sp]; // (Will be masked after fetch)
 }
 
 // 1
 static inline void JPnnn(int nnn)
 {
-    pc = nnn;
+    pc = nnn - CHIP_OPCODE_SIZE; // (Will be masked after fetch [important for JP v0 nnn ofc])
 }
 
 // 2
@@ -108,9 +120,9 @@ static inline void CALLnnn(int nnn)
     stack[sp] = pc;
     sp++;
 
-    pc = nnn;
+    pc = nnn - 2; // (Will be masked after fetch)
 
-    assert(sp != CHIP_STACK_SIZE); // Did stack overflow occur ??
+    if (sp == CHIP_STACK_SIZE) chipPanic("stack overflow !!", NULL); // Handle stack overflow
 }
 
 // 3
@@ -126,7 +138,7 @@ static inline void SNExkk(int x, int kk)
 }
 
 // 5
-static inline void SExy(int x, int y) // Dont u dare :|
+static inline void SExy(int x, int y) // :|
 {
     if (v[x] == v[y]) pc += CHIP_OPCODE_SIZE;
 }
@@ -174,7 +186,8 @@ static inline void SUBxy(int x, int y)
 }
 static inline void SHRxy(int x, int y)
 {
-    v[SHR_REG] <<= 1; // smort B)
+    v[0xf] = v[x] & 1;
+    v[SHR_REG] >>= 1; // smort B)
 }
 static inline void SUBNxy(int x, int y)
 {
@@ -183,7 +196,8 @@ static inline void SUBNxy(int x, int y)
 }
 static inline void SHLxy(int x, int y)
 {
-    v[SHR_REG] >>= 1; // smort B) once more
+    v[0xf] = (v[x] & 0x80) >> 7;
+    v[SHR_REG] <<= 1; // smort B) once more
 }
 
 // 9
@@ -199,15 +213,12 @@ static inline void LDinnn(int nnn)
 }
 
 // B
-static inline void JP0nnn(int nnn)
-{
-    pc = (nnn + v[0]) & 0xfff;
-}
+// JP v0 nnn
 
 // C
 static inline void RNDxkk(int x, int kk)
 {
-    v[x] = 0xff /* RANDOM NUM HERE */ & kk;
+    v[x] = rand() & kk;
 }
 
 // D
@@ -221,16 +232,71 @@ static inline void DRAWxyn(int x, int y, int n)
         for (int ii = 0; ii < 8; ii++)
         {
             int bit = (0x80 & (byte << ii)) >> 7;
-            if (!shouldSetF)
-                shouldSetF = chipPlotPx(
-                    (v[x] + ii) & (CHIP_WIDTH-1),
-                    (v[y] + i) & (CHIP_HEIGHT-1),
-                    bit
-                );
+            int result = chipPlotPx(
+                (v[x] + ii) & (CHIP_WIDTH-1),
+                (v[y] + i) & (CHIP_HEIGHT-1),
+                bit
+            );
+
+            if (!shouldSetF) shouldSetF = result;
         }
     }
 
     v[0xf] = shouldSetF;
+}
+
+// E
+static inline void SKPx(int x)
+{
+    if (keypad[v[x & 0xf]]) pc += CHIP_OPCODE_SIZE;
+}
+static inline void SKNPx(int x)
+{
+    if (!keypad[v[x & 0xf]]) pc += CHIP_OPCODE_SIZE;
+}
+
+// F
+static inline void LDxDT(int x)
+{
+    v[x] = dt;
+}
+static inline void LDxK(int x)
+{
+    v[x] = 0;
+}
+static inline void LDDTx(int x)
+{
+    dt = v[x];
+}
+static inline void LDSTx(int x)
+{
+    st = v[x];
+}
+static inline void ADDix(int x)
+{
+    regI = (regI + v[x]) & 0xfff;
+}
+static inline void LDfx(int x)
+{
+    regI = (v[x] * 5) & 0xfff;
+}
+static inline void LDbx(int x)
+{
+    ram[regI]               = (unsigned char)(v[x] / 100);
+    ram[(regI + 1) & 0xfff] = (unsigned char)(v[x] % 100 / 10);
+    ram[(regI + 2) & 0xfff] = (unsigned char)(v[x] % 10);
+}
+static inline void LDix(int x)
+{
+    for (int i = 0; i < x+1; i++)
+        ram[(regI + i) & 0xfff] = v[i];
+
+}
+static inline void LDxi(int x)
+{
+    for (int i = 0; i < x+1; i++)
+        v[i] = ram[(regI + i) & 0xfff];
+
 }
 // -------------------- //
 
@@ -242,8 +308,6 @@ void chipStepCycle()
 
     // printf("OPCODE %X\n", opcode);
     // printf("PC: %X\n\n", pc);
-
-    pc += CHIP_OPCODE_SIZE;
 
     const int hi = opcode >> 12;
     const int n = opcode & 0x000f;
@@ -268,6 +332,22 @@ void chipStepCycle()
             JPnnn(nnn);
             break;
 
+        case 0x2:
+            CALLnnn(nnn);
+            break;
+
+        case 0x3:
+            SExkk(x, kk);
+            break;
+
+        case 0x4:
+            SNExkk(x, kk);
+            break;
+
+        case 0x5:
+            SExy(x, y); // floshed !!
+            break;
+
         case 0x6:
             LDxkk(x, kk);
             break;
@@ -276,15 +356,69 @@ void chipStepCycle()
             ADDxkk(x, kk);
             break;
 
+        case 0x8:
+            switch (n) {
+                case 0x0: LDxy(x, y); break;
+                case 0x1: ORxy(x, y); break;
+                case 0x2: ANDxy(x, y); break;
+                case 0x3: XORxy(x, y); break;
+                case 0x4: ADDxy(x, y); break;
+                case 0x5: SUBxy(x, y); break;
+                case 0x6: SHRxy(x, y); break;
+                case 0x7: SUBNxy(x, y); break;
+                case 0xe: SHLxy(x, y); break;
+
+                default: chipPanic("undefined opcode !!", opcode);
+            }
+            break;
+
+        case 0x9:
+            SNExy(x, y);
+            break;
+
         case 0xa:
             LDinnn(nnn);
+            break;
+
+        case 0xb:
+            JPnnn((nnn + v[0])); // Winky ;)
+            break;
+
+        case 0xc:
+            RNDxkk(x, kk);
             break;
 
         case 0xd:
             DRAWxyn(x, y, n);
             break;
+
+        case 0xe:
+            if (kk == 0x9e) SKPx(x);
+            else if (kk == 0xa1) SKNPx(x);
+
+            else chipPanic("undefined opcode !!", opcode);
+            break;
+
+        case 0xf:
+            switch (kk) {
+                case 0x07: LDxDT(x); break;
+                case 0x0a: LDxK(x); break;
+                case 0x15: LDDTx(x); break;
+                case 0x18: LDSTx(x); break;
+                case 0x1e: ADDix(x); break;
+                case 0x29: LDfx(x); break;
+                case 0x33: LDbx(x); break;
+                case 0x55: LDix(x); break;
+                case 0x65: LDxi(x); break;
+
+                default: chipPanic("undefined opcode !!", opcode);
+            }
+            break;
+
+        default: chipPanic("THIS SHOULDNT BE HAPPENING.", 0x6969);
     }
 
+    pc += CHIP_OPCODE_SIZE;
     pc &= 0xfff;
 }
 
@@ -306,7 +440,7 @@ int chipLoadRom(char* fileName[])
     FILE *file = fopen(fileName, "r+b"); // r for read, b for binary
     if (!file)
     {
-        printf("SHIT-8 :: ROM NOT FOUND !! %s\n", fileName);
+        printf("SHIT-8 :: ROM NOT FOUND !!\n");
         return 1;
     }
 
@@ -322,7 +456,7 @@ int chipLoadRom(char* fileName[])
     fread(rom, len, 1, file); // read 10 bytes to our buffer
     fclose(file);
 
-    printf("SHIT-8 :: LOADED ROM !! %s\n", fileName);
+    printf("SHIT-8 :: LOADED ROM !!\n");
     // ------------------------ //
 
     return 0; // Success !
@@ -359,6 +493,7 @@ void chipReset()
 // -------------------- // MAIN PROGRAM HERE
 int main(int argc, char* argv[])
 {
+    srand(time(NULL));
 
     // Load rom from command parameter
     if (argc < 2)
@@ -440,5 +575,6 @@ int main(int argc, char* argv[])
     SDL_DestroyTexture(texture);
     SDL_Quit();
 
+    printf("\nSHIT-8 :: SEE U NEXT TIME :3\n\n");
     return 0;
 }

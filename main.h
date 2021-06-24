@@ -2,22 +2,25 @@
 #define MAIN_H
 
 // ------------------------ //
+// LEAVE THESE ALONE PLEASE
 #define CHIP_WIDTH 64
 #define CHIP_HEIGHT 32
 
 #define CHIP_OPCODE_SIZE 2
+
+#define SDL_INITS (SDL_INIT_VIDEO)
+#define BPP 4 // ARGB-32
+
+// SURE U CAN TWEAK WITH THESE
 #define CHIP_STACK_SIZE 16
 
 #define WINDOW_TITLE "SHIT-8"
 #define WINDOW_SCALE 4
 
-#define USLEEP_US (1000000 / 60)
-#define CPF 10
+#define USLEEP_US (1000000 / 60) // (Frame intervals in microseconds)
+#define CPF 10 // (Cycles per frame)
 
-#define SDL_INITS (SDL_INIT_VIDEO)
-#define BPP 4 // ARGB-32
-
-// CHIP-8 quirks
+// CHIP-8 QUIRKS - CONFIGURABLE FS
 #define SHR_REG y
 
 // ------------------------ //
